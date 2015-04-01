@@ -23,6 +23,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Parcel;
@@ -229,19 +230,13 @@ public class DiscreteSeekBar extends View {
 
         mIndicatorFormatter = a.getString(R.styleable.DiscreteSeekBar_dsb_indicatorFormatter);
 
-        ColorStateList trackColor = a.getColorStateList(R.styleable.DiscreteSeekBar_dsb_trackColor);
-        ColorStateList progressColor = a.getColorStateList(R.styleable.DiscreteSeekBar_dsb_progressColor);
+
         ColorStateList rippleColor = a.getColorStateList(R.styleable.DiscreteSeekBar_dsb_rippleColor);
         boolean editMode = isInEditMode();
         if (editMode && rippleColor == null) {
             rippleColor = new ColorStateList(new int[][]{new int[]{}}, new int[]{Color.DKGRAY});
         }
-        if (editMode && trackColor == null) {
-            trackColor = new ColorStateList(new int[][]{new int[]{}}, new int[]{Color.GRAY});
-        }
-        if (editMode && progressColor == null) {
-            progressColor = new ColorStateList(new int[][]{new int[]{}}, new int[]{0xff009688});
-        }
+
         mRipple = SeekBarCompat.getRipple(rippleColor);
         if (isLollipopOrGreater) {
             SeekBarCompat.setBackground(this, mRipple);
@@ -250,19 +245,28 @@ public class DiscreteSeekBar extends View {
         }
 
 
-        TrackRectDrawable shapeDrawable = new TrackRectDrawable(trackColor);
-        mTrack = shapeDrawable;
+        Drawable trackDrawable = a.getDrawable(R.styleable.DiscreteSeekBar_dsb_trackBackground);
+        if(trackDrawable == null){
+            int color = getResources().getColor(R.color.dsb_track_color);
+            mTrack =  new ColorDrawable(color);
+        } else {
+            mTrack = trackDrawable;
+        }
         mTrack.setCallback(this);
 
-        shapeDrawable = new TrackRectDrawable(progressColor);
-        mScrubber = shapeDrawable;
+        Drawable progressDrawable = a.getDrawable(R.styleable.DiscreteSeekBar_dsb_progressBackground);
+        if (progressDrawable == null) {
+            int color = getResources().getColor(R.color.dsb_progress_color);
+            mScrubber = new ColorDrawable(color);
+        } else {
+            mScrubber = progressDrawable;
+        }
         mScrubber.setCallback(this);
 
-        ThumbDrawable thumbDrawable = new ThumbDrawable(progressColor, thumbSize);
-        mThumb = thumbDrawable;
+        ColorStateList thumbColor = a.getColorStateList(R.styleable.DiscreteSeekBar_dsb_thumbColor);
+        mThumb = new ThumbDrawable(thumbColor, thumbSize);
         mThumb.setCallback(this);
         mThumb.setBounds(0, 0, mThumb.getIntrinsicWidth(), mThumb.getIntrinsicHeight());
-
 
         if (!editMode) {
             mIndicator = new PopupIndicator(context, attrs, defStyle, convertValueToMessage(mMax));
@@ -271,7 +275,6 @@ public class DiscreteSeekBar extends View {
         a.recycle();
 
         setNumericTransformer(new DefaultNumericTransformer());
-
     }
 
     /**
@@ -419,18 +422,26 @@ public class DiscreteSeekBar extends View {
     }
 
     /**
-     * Sets the color of the seek thumb, as well as the color of the popup indicator.
+     * Sets the color of the seek thumb.
      *
-     * @param startColor The color the seek thumb will be changed to
-     * @param endColor   The color the popup indicator will be changed to
+     * @param color The color the seek thumb will be changed to
      */
-    public void setThumbColor(int startColor, int endColor) {
-        mThumb.setColorStateList(ColorStateList.valueOf(startColor));
+    public void setThumbColor(int color) {
+        mThumb.setColorStateList(ColorStateList.valueOf(color));
+    }
+
+    /**
+     * Sets the color of the popup indicator.
+     *
+     * @param startColor The color the popup indicator a the beginning of the animation
+     * @param endColor   The color the popup indicator at the end of animation
+     */
+    public void setIndicatorColor(int startColor, int endColor) {
         mIndicator.setColors(startColor, endColor);
     }
 
     /**
-     * Sets the color of the seekbar scrubber
+     * Sets the color of the seek bar scrubber.
      *
      * @param color The color the track will be changed to
      */
@@ -537,10 +548,10 @@ public class DiscreteSeekBar extends View {
         int paddingRight = getPaddingRight();
         int bottom = getHeight() - getPaddingBottom() - addedThumb;
         mThumb.setBounds(paddingLeft, bottom - thumbHeight, paddingLeft + thumbWidth, bottom);
-        int trackHeight = Math.max(mTrackHeight / 2, 1);
+        int trackHeight = Math.max(mTrack.getIntrinsicHeight(), 1);
         mTrack.setBounds(paddingLeft + halfThumb, bottom - halfThumb - trackHeight,
                 getWidth() - halfThumb - paddingRight - addedThumb, bottom - halfThumb + trackHeight);
-        int scrubberHeight = Math.max(mScrubberHeight / 2, 2);
+        int scrubberHeight = Math.max(mScrubber.getIntrinsicHeight(), 1);
         mScrubber.setBounds(paddingLeft + halfThumb, bottom - halfThumb - scrubberHeight,
                 paddingLeft + halfThumb, bottom - halfThumb + scrubberHeight);
 
@@ -841,13 +852,16 @@ public class DiscreteSeekBar extends View {
         }
         mThumb.copyBounds(mInvalidateRect);
         mThumb.setBounds(posX, mInvalidateRect.top, posX + thumbWidth, mInvalidateRect.bottom);
+        Rect scrubberRect = mScrubber.copyBounds();
         if (isRtl()) {
-            mScrubber.getBounds().right = start - halfThumb;
-            mScrubber.getBounds().left = posX + halfThumb;
+            scrubberRect.left = posX + halfThumb;
+            scrubberRect.right = start - halfThumb;
         } else {
-            mScrubber.getBounds().left = start + halfThumb;
-            mScrubber.getBounds().right = posX + halfThumb;
+            scrubberRect.left = start + halfThumb;
+            scrubberRect.right = posX+halfThumb;
         }
+        mScrubber.setBounds(scrubberRect);
+
         final Rect finalBounds = mTempRect;
         mThumb.copyBounds(finalBounds);
         if (!isInEditMode()) {
