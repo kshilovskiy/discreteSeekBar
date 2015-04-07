@@ -32,6 +32,8 @@
         <attr name="dsb_thumbColor" format="color|reference"/>
         <attr name="dsb_trackBackground" format="color|reference"/>
         <attr name="dsb_progressBackground" format="color|reference"/>
+        <attr name="dsb_stepDrawable" format="reference"/>
+        <attr name="dsb_step" format="integer"/>
         <attr name="dsb_indicatorPopupEnabled" format="boolean"/>
     </declare-styleable>
 </resources>

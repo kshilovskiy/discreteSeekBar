@@ -21,6 +21,7 @@ import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
 import android.graphics.PorterDuff;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
@@ -43,9 +44,9 @@ import android.view.ViewParent;
 import org.adw.library.widgets.discreteseekbar.internal.PopupIndicator;
 import org.adw.library.widgets.discreteseekbar.internal.compat.AnimatorCompat;
 import org.adw.library.widgets.discreteseekbar.internal.compat.SeekBarCompat;
+import org.adw.library.widgets.discreteseekbar.internal.drawable.HorizontalScaleDrawable;
 import org.adw.library.widgets.discreteseekbar.internal.drawable.MarkerDrawable;
 import org.adw.library.widgets.discreteseekbar.internal.drawable.ThumbDrawable;
-import org.adw.library.widgets.discreteseekbar.internal.drawable.TrackRectDrawable;
 
 import java.util.Formatter;
 import java.util.Locale;
@@ -66,6 +67,7 @@ public class DiscreteSeekBar extends View {
         public void onProgressChanged(DiscreteSeekBar seekBar, int value, boolean fromUser);
 
         public void onStartTrackingTouch(DiscreteSeekBar seekBar);
+
         public void onStopTrackingTouch(DiscreteSeekBar seekBar);
     }
 
@@ -133,8 +135,10 @@ public class DiscreteSeekBar extends View {
     private Drawable mTrack;
     private Drawable mScrubber;
     private Drawable mRipple;
+    //Used to draw drawables equally distributed along the the track.
+    private HorizontalScaleDrawable mSeekBarScale;
 
-    private int mTrackHeight;
+
     private int mScrubberHeight;
     private int mAddedTouchBounds;
 
@@ -178,8 +182,6 @@ public class DiscreteSeekBar extends View {
 
         mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         float density = context.getResources().getDisplayMetrics().density;
-        mTrackHeight = (int) (1 * density);
-        mScrubberHeight = (int) (4 * density);
         int thumbSize = (int) (density * ThumbDrawable.DEFAULT_SIZE_DP);
 
         //Extra pixels for a touch area of 48dp
@@ -246,9 +248,9 @@ public class DiscreteSeekBar extends View {
 
 
         Drawable trackDrawable = a.getDrawable(R.styleable.DiscreteSeekBar_dsb_trackBackground);
-        if(trackDrawable == null){
+        if (trackDrawable == null) {
             int color = getResources().getColor(R.color.dsb_track_color);
-            mTrack =  new ColorDrawable(color);
+            mTrack = new ColorDrawable(color);
         } else {
             mTrack = trackDrawable;
         }
@@ -272,6 +274,13 @@ public class DiscreteSeekBar extends View {
             mIndicator = new PopupIndicator(context, attrs, defStyle, convertValueToMessage(mMax));
             mIndicator.setListener(mFloaterListener);
         }
+
+        //Setup drawable that draws images along the track
+        //E.g. |---|---|---|
+        Drawable stepDrawable = a.getDrawable(R.styleable.DiscreteSeekBar_dsb_stepDrawable);
+        int step = a.getInt(R.styleable.DiscreteSeekBar_dsb_step, 0);
+        setScaleStepDrawable(stepDrawable, step);
+
         a.recycle();
 
         setNumericTransformer(new DefaultNumericTransformer());
@@ -450,6 +459,32 @@ public class DiscreteSeekBar extends View {
     }
 
     /**
+     * If specified will draw the {@code drawable} equally distributed along the track with the
+     * specified step. If {@code step} is valid, the drawable at the beginning and end of the track
+     * will be always drawn.
+     *
+     * @param drawable drawn along the track
+     * @param step     > 0 and < bar max
+     */
+    public void setScaleStepDrawable(Drawable drawable, int step) {
+        if (step <= 0) {
+            throw new IllegalArgumentException("step must be > 0 but was " + step);
+        }
+
+        if (step >= getMax()) {
+            throw new IllegalArgumentException("step must be < bar max but was" + step);
+        }
+        if (drawable == null || step <= 0) {
+            mSeekBarScale = null;
+        } else {
+            //Total number of items to draw
+            int count = (getMax() / step) + 1;
+            mSeekBarScale = new HorizontalScaleDrawable(drawable, count);
+            mSeekBarScale.setCallback(this);
+        }
+    }
+
+    /**
      * If {@code enabled} is false the indicator won't appear. By default popup indicator is
      * enabled.
      */
@@ -549,11 +584,23 @@ public class DiscreteSeekBar extends View {
         int bottom = getHeight() - getPaddingBottom() - addedThumb;
         mThumb.setBounds(paddingLeft, bottom - thumbHeight, paddingLeft + thumbWidth, bottom);
         int trackHeight = Math.max(mTrack.getIntrinsicHeight(), 1);
-        mTrack.setBounds(paddingLeft + halfThumb, bottom - halfThumb - trackHeight,
-                getWidth() - halfThumb - paddingRight - addedThumb, bottom - halfThumb + trackHeight);
+        mTrack.setBounds(paddingLeft + halfThumb,
+                bottom - halfThumb - trackHeight,
+                getWidth() - halfThumb - paddingRight - addedThumb,
+                bottom - halfThumb + trackHeight);
         int scrubberHeight = Math.max(mScrubber.getIntrinsicHeight(), 1);
         mScrubber.setBounds(paddingLeft + halfThumb, bottom - halfThumb - scrubberHeight,
                 paddingLeft + halfThumb, bottom - halfThumb + scrubberHeight);
+
+        //Calculate the bounds of equally distributed scale drawables.
+        if (mSeekBarScale != null) {
+            int itemHalfWidth = mSeekBarScale.getIntrinsicItemWidth() / 2;
+            int itemHalfHeight = mSeekBarScale.getIntrinsicItemHeight() / 2;
+            mSeekBarScale.setBounds(paddingLeft + halfThumb - itemHalfWidth,
+                    bottom - halfThumb - itemHalfHeight,
+                    getWidth() - halfThumb - paddingRight - addedThumb - itemHalfWidth,
+                    bottom - halfThumb + itemHalfHeight);
+        }
 
         //Update the thumb position after size changed
         updateThumbPosFromCurrentProgress();
@@ -567,7 +614,14 @@ public class DiscreteSeekBar extends View {
         super.onDraw(canvas);
         mTrack.draw(canvas);
         mScrubber.draw(canvas);
+        //If present will draw an equally distributed images on the scale
+        //E.g. |---|---|---|
+        if (mSeekBarScale != null) {
+            mSeekBarScale.draw(canvas);
+        }
         mThumb.draw(canvas);
+
+
     }
 
     @Override
@@ -858,7 +912,7 @@ public class DiscreteSeekBar extends View {
             scrubberRect.right = start - halfThumb;
         } else {
             scrubberRect.left = start + halfThumb;
-            scrubberRect.right = posX+halfThumb;
+            scrubberRect.right = posX + halfThumb;
         }
         mScrubber.setBounds(scrubberRect);
 
